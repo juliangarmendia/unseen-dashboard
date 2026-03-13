@@ -8,33 +8,6 @@ ROOT_FOLDER_ID = "1QYc7gQx5EkAwR-8WxlNLwED8SNrbvAbA"
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 CREDS = os.path.join(os.path.dirname(__file__), 'credentials.json')
 
-def _fix_private_key(pk):
-    """
-    Normalize private key to proper PEM format regardless of how
-    Streamlit Cloud delivers it (literal \\n vs real newlines vs mixed).
-    """
-    # Step 1: if it contains literal backslash-n, convert to real newlines
-    if "\\n" in pk:
-        pk = pk.replace("\\n", "\n")
-
-    # Step 2: strip any extra whitespace around the key
-    pk = pk.strip()
-
-    # Step 3: ensure the key has proper PEM structure with real newlines
-    # Split on the header/footer markers and rebuild cleanly
-    pk = pk.replace("-----BEGIN PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----\n")
-    pk = pk.replace("-----END PRIVATE KEY-----", "\n-----END PRIVATE KEY-----")
-
-    # Step 4: collapse any double newlines that may have been created
-    while "\n\n" in pk:
-        pk = pk.replace("\n\n", "\n")
-
-    # Step 5: ensure it ends with a newline
-    if not pk.endswith("\n"):
-        pk = pk + "\n"
-
-    return pk
-
 def get_service():
     if os.path.exists(CREDS):
         creds = service_account.Credentials.from_service_account_file(
@@ -43,8 +16,10 @@ def get_service():
     else:
         import streamlit as st
         sa_raw = dict(st.secrets["gcp_service_account"])
-        if "private_key" in sa_raw:
-            sa_raw["private_key"] = _fix_private_key(sa_raw["private_key"])
+        # Handle both formats: triple-quote (real newlines) and single-line (\n literals)
+        pk = sa_raw.get("private_key", "")
+        if "\\n" in pk and "\n" not in pk:
+            sa_raw["private_key"] = pk.replace("\\n", "\n")
         creds = service_account.Credentials.from_service_account_info(
             sa_raw, scopes=SCOPES
         )
