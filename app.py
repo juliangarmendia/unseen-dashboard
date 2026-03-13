@@ -210,34 +210,37 @@ CAT_COLORS = [CLR["blue"],CLR["teal"],CLR["green"],CLR["orange"],
               "#ec4899","#a78bfa","#fb923c","#34d399"]
 
 # ── AUTH ─────────────────────────────────────────────────────────────────
-_CREDENTIALS = {
-    "usernames": {
-        "UnseenCreatures": {
-            "name": "Unseen Creatures",
-            "password": "GOAT10"
-        }
-    }
-}
-_authenticator = stauth.Authenticate(
-    credentials=_CREDENTIALS,
-    cookie_name="unseen_dashboard",
-    cookie_key="unseen_key_2025",
-    cookie_expiry_days=7,
-    auto_hash=True
-)
-_authenticator.login(
-    location="main",
-    fields={"Form name": "🍺 Unseen Creatures — Acceso",
-            "Username": "Usuario",
-            "Password": "Contraseña",
-            "Login": "Entrar"}
-)
-_auth_status = st.session_state.get("authentication_status")
-if _auth_status is False:
-    st.error("Usuario o contraseña incorrectos")
-    st.stop()
-elif _auth_status is None:
-    st.info("Ingresa tus credenciales para continuar.")
+_VALID_USERS = {"UnseenCreatures": "GOAT10"}
+
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.markdown("""
+    <div style="max-width:380px;margin:80px auto 0 auto;
+                background:#1a2035;border:1px solid #2d3a52;
+                border-radius:16px;padding:2rem 2.5rem;">
+    <div style="text-align:center;margin-bottom:1.5rem;">
+        <div style="font-size:2.5rem;">🍺</div>
+        <div style="color:#ffffff;font-size:1.15rem;font-weight:700;
+                    margin-top:0.5rem;">Unseen Creatures</div>
+        <div style="color:#4a6080;font-size:0.75rem;
+                    letter-spacing:0.1em;">BREWING & BLENDING</div>
+    </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.form("login_form"):
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        user  = st.text_input("Usuario")
+        pwd   = st.text_input("Contraseña", type="password")
+        submitted = st.form_submit_button("Entrar", use_container_width=True)
+        if submitted:
+            if _VALID_USERS.get(user) == pwd:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Usuario o contraseña incorrectos")
     st.stop()
 # Authenticated — show full dashboard
 
