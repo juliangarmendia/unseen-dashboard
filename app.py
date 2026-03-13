@@ -214,29 +214,32 @@ _CREDENTIALS = {
     "usernames": {
         "UnseenCreatures": {
             "name": "Unseen Creatures",
-            "password": "$2b$12$2h9AMWimJI/7JsVOiOCkB.J77HYMpRScD4en0FPhP7LLdIL6svECS"
+            "password": "GOAT10"
         }
     }
 }
 _authenticator = stauth.Authenticate(
-    _CREDENTIALS,
-    "unseen_dashboard",   # cookie name
-    "unseen_key_2025",    # cookie key
-    cookie_expiry_days=7
+    credentials=_CREDENTIALS,
+    cookie_name="unseen_dashboard",
+    cookie_key="unseen_key_2025",
+    cookie_expiry_days=7,
+    auto_hash=True
 )
-_name, _auth_status, _username = _authenticator.login(
+_authenticator.login(
     location="main",
     fields={"Form name": "🍺 Unseen Creatures — Acceso",
             "Username": "Usuario",
             "Password": "Contraseña",
             "Login": "Entrar"}
 )
+_auth_status = st.session_state.get("authentication_status")
 if _auth_status is False:
     st.error("Usuario o contraseña incorrectos")
     st.stop()
 elif _auth_status is None:
+    st.info("Ingresa tus credenciales para continuar.")
     st.stop()
-# If we reach here, user is authenticated — show the full dashboard
+# Authenticated — show full dashboard
 
 # ── PATHS (local) ────────────────────────────────────────────────────────
 BASE       = r"C:\brewery_analysis"
