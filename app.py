@@ -265,6 +265,19 @@ PAYOUT_26  = os.path.join(BASE, "Payout overview_2026_Feb16.csv")
 CF_25      = os.path.join(BASE, "Unseen - Cash Flow 2025.xlsx")
 CF_26      = os.path.join(BASE, "Unseen - Cash Flow 2026.xlsx")
 
+# -- UPLOADS folder (Streamlit Cloud) ------------------------------------
+UPLOADS = "/mnt/user-data/uploads"
+
+def _resolve(local_path, upload_name=None):
+    """Return path to file: local first, then uploads folder."""
+    if os.path.exists(local_path):
+        return local_path
+    if upload_name:
+        up = os.path.join(UPLOADS, upload_name)
+        if os.path.exists(up):
+            return up
+    return local_path
+
 # -- GOOGLE DRIVE (fallback when local files not found) --------------------
 try:
     from drive_loader import load_csvs as _drive_load_csvs
@@ -419,7 +432,7 @@ def load_payout():
 
 @st.cache_data
 def load_cashflow():
-    """Load and aggregate monthly cash flow data from both xlsx files."""
+    """Load monthly cash flow data using the TOTALES column from each sheet."""
     MONTH_SHEET_MAP = {
         'Febrero': 'Feb 25', 'Marzo': 'Mar 25', 'Abril': 'Abr 25',
         'Mayo': 'May 25', 'June': 'Jun 25', 'July': 'Jul 25',
@@ -427,64 +440,93 @@ def load_cashflow():
         'November': 'Nov 25', 'December': 'Dic 25',
         'January': 'Ene 26', 'February': 'Feb 26', 'March': 'Mar 26'
     }
-    # Summary sheet "2025" has Ene 25 data (row format: label | Ene2024 | Ene2025 | Feb2024 ...)
     MONTHS_ES_LIST = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 
-    def row_sum(df, label_substr):
-        labels = df.iloc[:, 0].astype(str).str.strip().str.lower()
-        mask = labels.str.contains(label_substr.lower(), na=False)
-        rows = df[mask]
-        if rows.empty: return 0.0
-        vals = pd.to_numeric(rows.iloc[0].iloc[1:], errors='coerce').dropna()
-        return float(vals.sum())
+    def find_totales_col(df):
+        """Find the column index of the TOTALES summary column."""
+        for i in range(len(df)):
+            for j in range(len(df.columns)):
+                if str(df.iloc[i, j]).strip().upper() == 'TOTALES':
+                    return j
+        return None
 
     def parse_month_df(df):
+        tot_col = find_totales_col(df)
+        if tot_col is None:
+            return {}
         d = {}
-        d['sales_summary']   = row_sum(df, 'sales summary')
-        d['total_ingresos']  = row_sum(df, 'ingresos')
-        d['aporte_afuera']   = row_sum(df, 'aporte de afuera')
-        d['total_egresos']   = row_sum(df, 'egresos')
-        d['food_cost']       = row_sum(df, 'food cost')
-        d['bebida_taproom']  = row_sum(df, 'bebida taproom')
-        d['payroll']         = row_sum(df, 'payrool') + row_sum(df, '^payroll')
-        d['tips']            = row_sum(df, '^tips')
-        d['taxes']           = row_sum(df, '^taxes')
-        d['contractors']     = row_sum(df, 'employees en negro') + row_sum(df, 'contractor')
-        d['bands']           = row_sum(df, 'expenses band')
-        d['apps']            = row_sum(df, '^apps')
-        d['ice_machine']     = row_sum(df, 'ice machine')
-        d['facebook']        = row_sum(df, 'facebook')
-        d['amazon']          = row_sum(df, '^amazon')
-        d['renta']           = row_sum(df, '^renta')
-        d['transfer_fee']    = row_sum(df, 'transfer/monthly fee')
-        d['inversion']       = row_sum(df, '^inversion')
-        d['gastos_prod']     = row_sum(df, 'gastos de produccion')
-        d['gas_ft']          = row_sum(df, 'gas food truck')
-        d['limpieza']        = row_sum(df, 'limpieza')
-        # Saldo final = last numeric in SALDO FINAL row
-        labels = df.iloc[:, 0].astype(str).str.strip().str.lower()
-        for keyword in ['saldo final']:
-            mask = labels.str.contains(keyword, na=False)
-            rows_sf = df[mask]
-            if not rows_sf.empty:
-                vals = pd.to_numeric(rows_sf.iloc[0].iloc[1:], errors='coerce').dropna()
-                d['saldo_final'] = float(vals.iloc[-1]) if len(vals) > 0 else None
-        for keyword in ['saldo inicial']:
-            mask = labels.str.contains(keyword, na=False)
-            rows_si = df[mask]
-            if not rows_si.empty:
-                vals = pd.to_numeric(rows_si.iloc[0].iloc[1:], errors='coerce').dropna()
-                d['saldo_inicial'] = float(vals.iloc[0]) if len(vals) > 0 else None
+        # Map row labels to dict keys using TOTALES column value
+        label_map = {
+            'ingresos':             'total_ingresos',
+            'egresos':              'total_egresos',
+            'saldo final':          'saldo_final',
+            'saldo inicial':        'saldo_inicial',
+            'aporte de afuera':     'aporte_afuera',
+            'food cost':            'food_cost',
+            'bebida taproom':       'bebida_taproom',
+            'payrool':              'payroll',
+            'payroll':              'payroll',
+            'tips':                 'tips',
+            'taxes':                'taxes',
+            'contractor':           'contractors',
+            'constractors':         'contractors',
+            'expenses band':        'bands',
+            'apps':                 'apps',
+            'ice machine':          'ice_machine',
+            'facebook':             'facebook',
+            'marketing':            'marketing',
+            'amazon':               'amazon',
+            'renta':                'renta',
+            'transfer/monthly fee': 'transfer_fee',
+            'inversion':            'inversion',
+            'gastos de produccion': 'gastos_prod',
+            'gas food truck':       'gas_ft',
+            'limpieza/basura':      'limpieza',
+            'limpieza':             'limpieza',
+            'sales summary':        'sales_summary',
+            'at&t':                 'att',
+            'fpl':                  'fpl',
+            'flcitygas':            'gas_utility',
+            'contador':             'contador',
+        }
+        first_saldo_final = True
+        for i in range(len(df)):
+            lbl_raw = str(df.iloc[i, 0]).strip()
+            lbl = lbl_raw.lower()
+            if not lbl or lbl == 'nan': continue
+            v = df.iloc[i, tot_col]
+            if not pd.notna(v): continue
+            try:
+                v = float(v)
+            except (ValueError, TypeError):
+                continue
+            # Special case: only first saldo final = monthly closing balance
+            if 'saldo final' in lbl:
+                if first_saldo_final:
+                    d['saldo_final'] = v
+                    first_saldo_final = False
+                continue
+            for key_lbl, dict_key in label_map.items():
+                if key_lbl in lbl:
+                    if dict_key not in d:
+                        d[dict_key] = v
+                    else:
+                        d[dict_key] += v  # accumulate (e.g. payroll may appear twice)
+                    break
         return d
 
     all_months = {}
 
     cf_sources = []
     if not USE_DRIVE:
-        for fpath in [CF_25, CF_26]:
-            if os.path.exists(fpath):
+        for fpath, upload_name in [
+            (CF_25, "Unseen_-_Cash_Flow_2025.xlsx"),
+            (CF_26, "Unseen_-_Cash_Flow_2026.xlsx"),
+        ]:
+            resolved = _resolve(fpath, upload_name)
+            if os.path.exists(resolved):
                 try:
-                    cf_sources.append(pd.ExcelFile(fpath, engine='openpyxl'))
+                    cf_sources.append(pd.ExcelFile(resolved, engine='openpyxl'))
                 except Exception:
                     pass
     else:
@@ -494,19 +536,20 @@ def load_cashflow():
 
     for xl in cf_sources:
         try:
-            _ = xl.sheet_names  # validate
+            _ = xl.sheet_names
         except Exception:
             continue
-        # Monthly sheets
         for sheet in xl.sheet_names:
             if sheet in MONTH_SHEET_MAP:
                 try:
                     df = xl.parse(sheet, header=None)
                     if df.empty: continue
-                    all_months[MONTH_SHEET_MAP[sheet]] = parse_month_df(df)
+                    parsed = parse_month_df(df)
+                    if parsed:
+                        all_months[MONTH_SHEET_MAP[sheet]] = parsed
                 except Exception:
-                    continue
-        # Summary sheet "2025" -- Ene 25 taproom breakdown (2024 vs 2025 cols)
+                    pass
+        # Summary sheet "2025" for Taproom breakdown (draft beer, food, etc.)
         if '2025' in xl.sheet_names:
             try:
                 df_sum = xl.parse('2025', header=None)
@@ -517,7 +560,7 @@ def load_cashflow():
                     12: 'total_guests', 13: 'avg_guest', 14: 'variacion_yoy'
                 }
                 for i, month in enumerate(MONTHS_ES_LIST):
-                    col_25 = 2 + i * 2  # 2025 column for each month
+                    col_25 = 2 + i * 2
                     key = f"{month} 25"
                     if key not in all_months:
                         all_months[key] = {}
@@ -829,6 +872,11 @@ with tab_ov:
                 if not sub.empty:
                     available_months.append(f"{MONTHS_ES[mo]} {str(yr)[-2:]}")
 
+    # Fallback: use P&L month cols if no sales data
+    if not available_months and month_cols:
+        available_months = [str(c) for c in month_cols
+                            if str(c).strip() not in ("", "nan", "NaN")]
+
     sel_mon_es = st.selectbox("Mes para Overview",
                                available_months if available_months else ["--"],
                                index=len(available_months)-1 if available_months else 0)
@@ -1051,14 +1099,32 @@ with tab_pl:
             "total gastos": CLR["red"],
         }
 
+        # Build highlight row list (keywords that match important lines)
+        KEY_ROWS = {
+            "ventas netas", "food cost", "bebida taproom", "costo cerveza",
+            "total cogs", "margen bruto", "total gastos", "resultado operativo",
+            "resultado neto",
+        }
+
+        import re as _re2
         display_df = pl_data[["line_item"] + show_cols].copy()
-        display_df = display_df.rename(columns={"line_item": "Linea P&L"})
-        for c in show_cols:
+        # Add a full-year TOTAL column
+        display_df["TOTAL"] = display_df[show_cols].apply(
+            lambda row: pd.to_numeric(row, errors="coerce").sum(), axis=1)
+
+        display_cols = show_cols + ["TOTAL"]
+        for c in display_cols:
             display_df[c] = display_df[c].apply(
                 lambda v: fmt_usd(v) if pd.notna(v) else "--")
 
-        st.dataframe(display_df.set_index("Linea P&L"),
-                     use_container_width=True, height=500)
+        display_df = display_df.set_index("line_item")
+
+        # Determine which rows to highlight
+        hl_rows = [idx for idx in display_df.index
+                   if any(kw in str(idx).lower() for kw in KEY_ROWS)]
+
+        st.markdown(html_table(display_df, highlight_rows=hl_rows),
+                    unsafe_allow_html=True)
 
         st.divider()
         st.markdown("##### % de Ventas Netas")
@@ -1092,55 +1158,76 @@ with tab_pl:
 # TAB 4: SALES ANALYTICS
 # ==========================================================================
 with tab_sales:
-    st.header("🍻 Sales Analytics")
+    st.header("Sales Analytics")
 
-    if not sales_day.empty:
-        sa_yr = st.selectbox("Ano", [2025, 2026], key="yr_sales")
-        sub   = sales_day[sales_day["year"] == sa_yr]
-        prefix_sa = "25" if sa_yr == 2025 else "26"
-        MONTHS_ES_SA = ["Ene","Feb","Mar","Abr","May","Jun",
-                        "Jul","Ago","Sep","Oct","Nov","Dic"]
+    MONTHS_ES_SA = ["Ene","Feb","Mar","Abr","May","Jun",
+                    "Jul","Ago","Sep","Oct","Nov","Dic"]
 
-        # -- KPIs from CF data ------------------------------------------
-        cf_yr_keys = [f"{m} {prefix_sa}" for m in MONTHS_ES_SA if f"{m} {prefix_sa}" in cf_data]
-        total_ventas_cf  = sum(cf_data[m].get("ingresos_taproom", 0) or 0 for m in cf_yr_keys)
-        total_guests_cf  = sum(cf_data[m].get("total_guests", 0) or 0 for m in cf_yr_keys)
-        avg_guest_cf     = (sum(cf_data[m].get("avg_guest", 0) or 0 for m in cf_yr_keys)
-                            / len(cf_yr_keys)) if cf_yr_keys else 0
-        yoy_vals         = [cf_data[m].get("variacion_yoy", None) for m in cf_yr_keys]
-        yoy_vals         = [v for v in yoy_vals if v is not None]
-        avg_yoy          = sum(yoy_vals) / len(yoy_vals) if yoy_vals else None
+    sa_yr = st.selectbox("Ano", [2025, 2026], key="yr_sales")
+    prefix_sa = "25" if sa_yr == 2025 else "26"
 
-        # From toast daily data
-        total_ventas_toast = sub["Net sales"].sum() if "Net sales" in sub.columns else 0
-        total_orders       = sub["Total orders"].sum() if "Total orders" in sub.columns else 0
-        total_guests_toast = sub["Total guests"].sum() if "Total guests" in sub.columns else 0
+    # Determine which months have data (CF or P&L)
+    cf_yr_keys = [f"{m} {prefix_sa}" for m in MONTHS_ES_SA if f"{m} {prefix_sa}" in cf_data]
+    pl_yr_cols = [c for c in month_cols if str(c).endswith(prefix_sa)] if pl_ok else []
 
-        sk1,sk2,sk3,sk4,sk5 = st.columns(5)
-        sk1.metric("💵 Ventas Totales",   fmt_usd(total_ventas_toast or total_ventas_cf))
-        sk2.metric("👥 Guests Totales",   f"{int(total_guests_toast or total_guests_cf):,}")
-        sk3.metric("🧾 Órdenes Totales",  f"{int(total_orders):,}" if total_orders else "--")
-        sk4.metric("🎯 Avg/Guest",        f"${avg_guest_cf:.2f}" if avg_guest_cf else "--")
-        sk5.metric("📈 Crecimiento YoY",  f"{avg_yoy*100:+.1f}%" if avg_yoy else "--")
+    has_toast  = not sales_day.empty and not sales_day[sales_day["year"] == sa_yr].empty
+    has_cf     = bool(cf_yr_keys)
+    has_pl     = bool(pl_yr_cols)
+    has_any    = has_toast or has_cf or has_pl
+
+    if not has_any:
+        st.info("No se encontraron datos de ventas. "
+                "Carga los archivos de Toast o el modelo P&L para ver Sales Analytics.")
+    else:
+        sub_toast = sales_day[sales_day["year"] == sa_yr] if has_toast else pd.DataFrame()
+
+        # -- KPI row ---------------------------------------------------
+        total_ventas_toast = sub_toast["Net sales"].sum() if has_toast and "Net sales" in sub_toast.columns else 0
+        total_guests_toast = sub_toast["Total guests"].sum() if has_toast and "Total guests" in sub_toast.columns else 0
+        total_orders_toast = sub_toast["Total orders"].sum() if has_toast and "Total orders" in sub_toast.columns else 0
+
+        # CF-based totals (taproom breakdown)
+        total_ventas_cf = sum(cf_data[m].get("total_ingresos", 0) or 0 for m in cf_yr_keys)
+        total_guests_cf = sum(cf_data[m].get("total_guests", 0) or 0 for m in cf_yr_keys)
+        avg_guest_vals  = [cf_data[m].get("avg_guest", 0) or 0 for m in cf_yr_keys
+                           if (cf_data[m].get("avg_guest") or 0) > 0]
+        avg_guest_cf    = sum(avg_guest_vals) / len(avg_guest_vals) if avg_guest_vals else 0
+
+        # P&L ventas as final fallback
+        pl_data_sa, _ = get_pl()
+        total_ventas_pl = 0
+        if has_pl and not pl_data_sa.empty:
+            vrow = get_row(pl_data_sa, "ventas netas")
+            if vrow is not None:
+                total_ventas_pl = sum(
+                    (safe_val(vrow, c) or 0) for c in pl_yr_cols)
+
+        total_ventas = total_ventas_toast or total_ventas_cf or total_ventas_pl
+        total_guests = total_guests_toast or total_guests_cf
+
+        sk1, sk2, sk3, sk4 = st.columns(4)
+        sk1.metric("Ventas Totales",  fmt_usd(total_ventas))
+        sk2.metric("Guests Totales",  f"{int(total_guests):,}" if total_guests else "--")
+        sk3.metric("Ordenes Totales", f"{int(total_orders_toast):,}" if total_orders_toast else "--")
+        sk4.metric("Avg / Guest",     f"${avg_guest_cf:.2f}" if avg_guest_cf else "--")
 
         st.divider()
 
-        # -- Ventas diarias + tendencia ---------------------------------
-        st.markdown("##### Ventas Diarias")
-        if "Net sales" in sub.columns:
-            sub_sorted = sub.sort_values("date")
-            # Rolling 7-day avg
-            sub_sorted["roll7"] = sub_sorted["Net sales"].rolling(7, min_periods=1).mean()
+        # -- Daily sales chart (Toast only) ----------------------------
+        if has_toast and "Net sales" in sub_toast.columns:
+            st.markdown("##### Ventas Diarias")
+            sub_s = sub_toast.sort_values("date").copy()
+            sub_s["roll7"] = sub_s["Net sales"].rolling(7, min_periods=1).mean()
             fig_daily = go.Figure()
             fig_daily.add_scatter(
-                x=sub_sorted["date"], y=sub_sorted["Net sales"],
+                x=sub_s["date"], y=sub_s["Net sales"],
                 name="Ventas diarias",
                 fill="tozeroy", fillcolor="rgba(59,130,246,0.10)",
                 line=dict(color=CLR["blue"], width=1), mode="lines"
             )
             fig_daily.add_scatter(
-                x=sub_sorted["date"], y=sub_sorted["roll7"],
-                name="Media 7 días",
+                x=sub_s["date"], y=sub_s["roll7"],
+                name="Media 7 dias",
                 line=dict(color=CLR["orange"], width=2.5, dash="dot"),
                 mode="lines"
             )
@@ -1149,31 +1236,78 @@ with tab_sales:
                yaxis_tickprefix="$", yaxis_tickformat=",.0f",
                legend=dict(orientation="h", y=1.1))
             st.plotly_chart(fig_daily, use_container_width=True)
+            st.divider()
+
+        # -- Monthly ventas (P&L or CF) --------------------------------
+        st.markdown("##### Ventas Netas por Mes")
+        monthly_ventas = {}
+
+        if has_pl and not pl_data_sa.empty:
+            vrow = get_row(pl_data_sa, "ventas netas")
+            gm_row = get_row(pl_data_sa, "margen bruto")
+            if vrow is not None:
+                for c in pl_yr_cols:
+                    monthly_ventas[c] = safe_val(vrow, c) or 0
+
+        if monthly_ventas:
+            months_list = list(monthly_ventas.keys())
+            ventas_list = [monthly_ventas[m] for m in months_list]
+
+            fig_mv = go.Figure()
+            fig_mv.add_bar(
+                name="Ventas Netas", x=months_list, y=ventas_list,
+                marker_color=CLR["blue"], opacity=0.85,
+                text=[fmt_usd(v) for v in ventas_list],
+                textposition="outside", textfont=dict(color=TXT, size=10)
+            )
+            # Add GM line if available
+            if has_pl and not pl_data_sa.empty and gm_row is not None:
+                gm_list = [safe_val(gm_row, c) or 0 for c in pl_yr_cols]
+                fig_mv.add_scatter(
+                    x=months_list, y=gm_list, name="Margen Bruto",
+                    mode="lines+markers",
+                    line=dict(color=CLR["green"], width=2.5),
+                    marker=dict(size=7)
+                )
+            dc(fig_mv, height=320,
+               yaxis_tickprefix="$", yaxis_tickformat=",.0f",
+               legend=dict(orientation="h", y=1.1))
+            st.plotly_chart(fig_mv, use_container_width=True)
+        elif has_cf:
+            ing_vals = [cf_data[m].get("total_ingresos", 0) or 0 for m in cf_yr_keys]
+            fig_mv = go.Figure(go.Bar(
+                x=cf_yr_keys, y=ing_vals, marker_color=CLR["blue"],
+                text=[fmt_usd(v) for v in ing_vals],
+                textposition="outside", textfont=dict(color=TXT)
+            ))
+            dc(fig_mv, height=320,
+               yaxis_tickprefix="$", yaxis_tickformat=",.0f")
+            st.plotly_chart(fig_mv, use_container_width=True)
 
         st.divider()
 
-        # -- Revenue mix from CF (monthly stacked) ---------------------
-        has_cf_mix = any(cf_data.get(m, {}).get("draft_beer") for m in cf_yr_keys)
+        # -- Revenue mix (CF summary sheet data) -----------------------
+        has_cf_mix = has_cf and any(cf_data.get(m, {}).get("draft_beer") for m in cf_yr_keys)
         if has_cf_mix:
-            st.markdown("##### Mix de Ingresos por Categoria -- Mensual")
+            st.markdown("##### Mix de Ingresos por Categoria")
             mix_cats   = ["draft_beer","food_sales","wine","happy_hour",
                           "bottle_beer","uber","retail","na_bev"]
             mix_labels = ["Draft Beer","Food","Wine","Happy Hour",
                           "Bottle Beer","Uber Eats","Retail","NA Beverages"]
-            fig_mix = go.Figure()
-            for cat, label, color in zip(mix_cats, mix_labels, CAT_COLORS):
-                vals = [cf_data[m].get(cat, 0) or 0 for m in cf_yr_keys]
-                if any(v > 0 for v in vals):
-                    fig_mix.add_bar(name=label, x=cf_yr_keys, y=vals, marker_color=color)
-            dc(fig_mix, barmode="stack", height=320,
-               yaxis_tickprefix="$", yaxis_tickformat=",.0f",
-               legend=dict(orientation="h", y=-0.35))
-            st.plotly_chart(fig_mix, use_container_width=True)
-
-            # Revenue mix donut for full year
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("##### Mix de Ventas -- Ano completo")
+            c_left, c_right = st.columns(2)
+            with c_left:
+                st.markdown("**Por mes (apilado)**")
+                fig_mix = go.Figure()
+                for cat, label, color in zip(mix_cats, mix_labels, CAT_COLORS):
+                    vals = [cf_data[m].get(cat, 0) or 0 for m in cf_yr_keys]
+                    if any(v > 0 for v in vals):
+                        fig_mix.add_bar(name=label, x=cf_yr_keys, y=vals, marker_color=color)
+                dc(fig_mix, barmode="stack", height=320,
+                   yaxis_tickprefix="$", yaxis_tickformat=",.0f",
+                   legend=dict(orientation="h", y=-0.4))
+                st.plotly_chart(fig_mix, use_container_width=True)
+            with c_right:
+                st.markdown("**Mix anual**")
                 donut_vals = {lbl: sum(cf_data[m].get(cat,0) or 0 for m in cf_yr_keys)
                               for cat, lbl in zip(mix_cats, mix_labels)}
                 donut_vals = {k:v for k,v in donut_vals.items() if v > 0}
@@ -1185,52 +1319,27 @@ with tab_sales:
                     textfont=dict(color=TXT, size=11),
                     insidetextfont=dict(color=TXT),
                 ))
-                dc(fig_donut, height=340, showlegend=False,
+                dc(fig_donut, height=320, showlegend=False,
                    margin=dict(t=10, b=10, l=10, r=10))
                 st.plotly_chart(fig_donut, use_container_width=True)
 
-            with c2:
-                st.markdown("##### Draft Beer vs Food vs Wine -- Tendencia")
-                fig_3cat = go.Figure()
-                for cat, label, color in [
-                    ("draft_beer","Draft Beer",CLR["blue"]),
-                    ("food_sales","Food",CLR["green"]),
-                    ("wine","Wine",CLR["purple"]),
-                ]:
-                    vals = [cf_data[m].get(cat, 0) or 0 for m in cf_yr_keys]
-                    fig_3cat.add_scatter(
-                        x=cf_yr_keys, y=vals, name=label,
-                        mode="lines+markers",
-                        line=dict(color=color, width=2.5),
-                        marker=dict(size=7)
-                    )
-                dc(fig_3cat, height=340,
-                   yaxis_tickprefix="$", yaxis_tickformat=",.0f",
-                   legend=dict(orientation="h", y=1.1))
-                st.plotly_chart(fig_3cat, use_container_width=True)
+            st.divider()
 
-        st.divider()
-
-        # -- Guests & ticket promedio -----------------------------------
-        st.markdown("##### Guests & Ticket Promedio por Mes")
-        has_guests = any(cf_data.get(m, {}).get("total_guests") for m in cf_yr_keys)
+        # -- Guests & avg ticket (CF data) -----------------------------
+        has_guests = has_cf and any(cf_data.get(m, {}).get("total_guests") for m in cf_yr_keys)
         if has_guests:
+            st.markdown("##### Guests & Ticket Promedio por Mes")
             gc1, gc2 = st.columns(2)
             with gc1:
-                g_vals   = [cf_data[m].get("total_guests", 0) or 0 for m in cf_yr_keys]
-                # Compare with prior year if available
-                prior_prefix = "24" if sa_yr == 2025 else "25"
-                fig_guests = go.Figure()
-                fig_guests.add_bar(
-                    name=str(sa_yr), x=cf_yr_keys, y=g_vals,
-                    marker_color=CLR["blue"],
+                g_vals = [cf_data[m].get("total_guests", 0) or 0 for m in cf_yr_keys]
+                fig_g = go.Figure(go.Bar(
+                    x=cf_yr_keys, y=g_vals, marker_color=CLR["purple"],
                     text=[f"{int(v):,}" for v in g_vals],
                     textposition="outside", textfont=dict(color=TXT)
-                )
-                dc(fig_guests, height=300,
-                   yaxis_tickformat=",",
+                ))
+                dc(fig_g, height=280, yaxis_tickformat=",",
                    margin=dict(t=30, b=40, l=10, r=10))
-                st.plotly_chart(fig_guests, use_container_width=True)
+                st.plotly_chart(fig_g, use_container_width=True)
             with gc2:
                 avg_vals = [cf_data[m].get("avg_guest", 0) or 0 for m in cf_yr_keys]
                 fig_avg = go.Figure()
@@ -1241,61 +1350,39 @@ with tab_sales:
                     marker=dict(size=8, color=CLR["teal"]),
                     fill="tozeroy", fillcolor="rgba(20,184,166,0.12)"
                 )
-                # Add target line at $32
                 fig_avg.add_hline(y=32, line_dash="dash",
                                   line_color=CLR["orange"],
                                   annotation_text="Target $32",
                                   annotation_font_color=CLR["orange"])
-                dc(fig_avg, height=300,
+                dc(fig_avg, height=280,
                    yaxis_tickprefix="$", yaxis_tickformat=".2f")
                 st.plotly_chart(fig_avg, use_container_width=True)
-
-        st.divider()
-
-        # -- YoY comparison from CF summary ----------------------------
-        if sa_yr == 2025 and any(cf_data.get(m, {}).get("variacion_yoy") for m in cf_yr_keys):
-            st.markdown("##### Crecimiento YoY por Mes (vs 2024)")
-            yoy_m = [cf_data[m].get("variacion_yoy", 0) or 0 for m in cf_yr_keys]
-            colors_yoy = [CLR["green"] if v >= 0 else CLR["red"] for v in yoy_m]
-            fig_yoy = go.Figure(go.Bar(
-                x=cf_yr_keys, y=[v*100 for v in yoy_m],
-                marker_color=colors_yoy,
-                text=[f"{v*100:+.1f}%" for v in yoy_m],
-                textposition="outside", textfont=dict(color=TXT)
-            ))
-            dc(fig_yoy, height=280,
-               yaxis_ticksuffix="%", yaxis_tickformat=".1f")
-            st.plotly_chart(fig_yoy, use_container_width=True)
             st.divider()
 
-        # -- Day of week analysis ---------------------------------------
-        st.markdown("##### Analisis por Día de Semana")
-        dow_order  = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
-        dow_labels = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"]
-        if "Net sales" in sub.columns and "dow" in sub.columns:
-            dow_agg = sub.groupby("dow").agg(
-                avg_sales=("Net sales","mean"),
-                total_sales=("Net sales","sum"),
-                count=("Net sales","count")
-            ).reindex(dow_order).fillna(0)
-
-            da1, da2 = st.columns(2)
-            with da1:
-                st.markdown("###### Venta Promedio por Día")
+        # -- Day of week analysis (Toast only) -------------------------
+        if has_toast and "Net sales" in sub_toast.columns and "dow" in sub_toast.columns:
+            st.markdown("##### Analisis por Dia de la Semana")
+            DOW_ORDER = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+            dow_agg = (sub_toast.groupby("dow")["Net sales"]
+                       .agg(total="sum", avg="mean", count="count")
+                       .reindex(DOW_ORDER).dropna())
+            dw1, dw2 = st.columns(2)
+            with dw1:
+                st.markdown("**Ventas promedio**")
                 fig_dow = go.Figure(go.Bar(
-                    x=dow_labels, y=dow_agg["avg_sales"].values,
+                    x=dow_agg.index, y=dow_agg["avg"].values,
                     marker_color=CAT_COLORS[:7],
-                    text=[fmt_usd(v) for v in dow_agg["avg_sales"].values],
+                    text=[fmt_usd(v) for v in dow_agg["avg"].values],
                     textposition="outside", textfont=dict(color=TXT)
                 ))
                 dc(fig_dow, height=280,
                    yaxis_tickprefix="$", yaxis_tickformat=",.0f",
                    margin=dict(t=30, b=40, l=10, r=10))
                 st.plotly_chart(fig_dow, use_container_width=True)
-            with da2:
-                st.markdown("###### Días operados por día de semana")
+            with dw2:
+                st.markdown("**Dias activos**")
                 fig_cnt = go.Figure(go.Bar(
-                    x=dow_labels, y=dow_agg["count"].values,
+                    x=dow_agg.index, y=dow_agg["count"].values,
                     marker_color=CAT_COLORS[2:9],
                     text=[str(int(v)) for v in dow_agg["count"].values],
                     textposition="outside", textfont=dict(color=TXT)
@@ -1303,12 +1390,39 @@ with tab_sales:
                 dc(fig_cnt, height=280,
                    margin=dict(t=30, b=40, l=10, r=10))
                 st.plotly_chart(fig_cnt, use_container_width=True)
+            st.divider()
 
-        st.divider()
+        # -- P&L-based monthly summary table ---------------------------
+        if has_pl and not pl_data_sa.empty and pl_yr_cols:
+            st.markdown("##### Tabla Resumen Mensual (P&L)")
+            summary_kws_sa = [
+                ("ventas netas",        "Ventas Netas"),
+                ("food cost",           "Food Cost"),
+                ("bebida taproom",      "Bebida Taproom"),
+                ("total cogs",          "Total COGS"),
+                ("margen bruto",        "Margen Bruto"),
+                ("total gastos",        "Total Gastos"),
+                ("resultado operativo", "EBITDA"),
+                ("resultado neto",      "Resultado Neto"),
+            ]
+            tbl_sa = []
+            for kw, label in summary_kws_sa:
+                row = get_row(pl_data_sa, kw)
+                if row is None: continue
+                entry = {"Linea": label}
+                for c in pl_yr_cols:
+                    entry[c] = fmt_usd(safe_val(row, c))
+                total_sa = sum((safe_val(row, c) or 0) for c in pl_yr_cols)
+                entry["TOTAL"] = fmt_usd(total_sa)
+                tbl_sa.append(entry)
+            if tbl_sa:
+                tbl_sa_df = pd.DataFrame(tbl_sa).set_index("Linea")
+                hl_sa = ["Ventas Netas","Margen Bruto","EBITDA","Resultado Neto"]
+                st.markdown(html_table(tbl_sa_df, highlight_rows=hl_sa), unsafe_allow_html=True)
 
-        # -- Monthly summary table --------------------------------------
-        if has_cf_mix:
-            st.markdown("##### Tabla Resumen de Ventas por Mes")
+        # -- CF monthly summary table ----------------------------------
+        elif has_cf_mix and cf_yr_keys:
+            st.markdown("##### Tabla Resumen de Ventas por Mes (Cash Flow)")
             mix_table = []
             for m in cf_yr_keys:
                 d = cf_data.get(m, {})
@@ -1327,8 +1441,6 @@ with tab_sales:
             mix_df = pd.DataFrame(mix_table).set_index("Mes")
             st.markdown(html_table(mix_df), unsafe_allow_html=True)
 
-    else:
-        st.info("No se encontraron datos de ventas.")
 
 # ==========================================================================
 # TAB 5: CASH FLOW
@@ -1574,52 +1686,156 @@ with tab_exp:
     pl_data, _ = get_pl()
 
     if pl_ok and not pl_data.empty:
-        yr_e = st.selectbox("Ano", [2025, 2026], key="yr_exp")
+        col_top1, col_top2 = st.columns(2)
+        with col_top1:
+            yr_e = st.selectbox("Ano", [2025, 2026], key="yr_exp")
+        with col_top2:
+            vista = st.selectbox("Vista", ["Agrupada", "Detallada"], key="vista_gastos")
+
         exp_cols = [c for c in month_cols if str(c).endswith(str(yr_e)[-2:])]
 
-        opex_rows = [r for r in pl_data["line_item"].tolist()
-                     if any(kw in r.lower() for kw in
-                            ["payroll","contractor","bandas","apps","toast fees",
-                             "tips","ice","cintas","limpieza","facebook","amazon",
-                             "inversion","transfer","otros"])]
+        # ----------------------------------------------------------------
+        # GROUPED view: high-level buckets
+        # ----------------------------------------------------------------
+        GRUPOS = {
+            "Personal (Payroll + Contractors)": ["payroll","contractor","constractors","employees en negro"],
+            "COGS (Food + Bebida)":             ["food cost","bebida taproom","costo cerveza"],
+            "Ocupacion (Renta + Utilities)":    ["renta","fpl","flcitygas","at&t","transfer/monthly","gas food truck"],
+            "Marketing & Eventos":              ["facebook","marketing","expenses band","bandas"],
+            "Operacion (Apps + Otros)":         ["apps","amazon","ice machine","limpieza","cintas","otros","contador","inversion"],
+            "Impuestos & Tips":                 ["tips","taxes","impuesto"],
+        }
 
-        if opex_rows:
-            st.markdown("##### Gastos Operativos por Mes")
-            fig_stack = go.Figure()
-            for i, row_name in enumerate(opex_rows[:8]):
-                row = get_row(pl_data, row_name[:10])
-                if row is None: continue
-                vals = [abs(safe_val(row, c) or 0) for c in exp_cols]
-                fig_stack.add_bar(name=row_name[:25], x=exp_cols, y=vals,
-                                  marker_color=CAT_COLORS[i % len(CAT_COLORS)])
-            dc(fig_stack, barmode="stack", height=350,
-               yaxis_tickprefix="$", yaxis_tickformat=",.0f",
-               legend=dict(**PT["legend"], orientation="h", y=-0.4))
-            st.plotly_chart(fig_stack, use_container_width=True)
+        # ----------------------------------------------------------------
+        # DETAILED view: all individual P&L expense rows
+        # ----------------------------------------------------------------
+        EXCLUIR_KW = ["ventas","margen","resultado","total cogs","total gasto","neto"]
 
-            # Pie for latest month
-            if exp_cols:
-                last_col = exp_cols[-1]
-                pie_vals = [(r, abs(safe_val(get_row(pl_data, r[:10]), last_col) or 0))
-                            for r in opex_rows[:10]]
-                pie_vals = [(r, v) for r, v in pie_vals if v > 0]
-                if pie_vals:
-                    labels_p, vals_p = zip(*pie_vals)
-                    col_p1, col_p2 = st.columns(2)
-                    with col_p1:
+        def is_expense_row(li):
+            lil = li.lower()
+            return (not any(x in lil for x in EXCLUIR_KW)
+                    and li.strip() not in ("", "nan"))
+
+        all_exp_rows = [r for r in pl_data["line_item"].tolist() if is_expense_row(r)]
+
+        if vista == "Agrupada":
+            # Build group totals per month
+            grp_data = {}
+            for grp_name, kws in GRUPOS.items():
+                row_vals = {}
+                for kw in kws:
+                    row = get_row(pl_data, kw)
+                    if row is None: continue
+                    for c in exp_cols:
+                        v = abs(safe_val(row, c) or 0)
+                        row_vals[c] = row_vals.get(c, 0) + v
+                if any(v > 0 for v in row_vals.values()):
+                    grp_data[grp_name] = row_vals
+
+            if grp_data:
+                # Stacked bar chart
+                st.markdown("##### Gastos por Grupo -- Mensual")
+                fig_grp = go.Figure()
+                for i, (grp_name, row_vals) in enumerate(grp_data.items()):
+                    vals = [row_vals.get(c, 0) for c in exp_cols]
+                    fig_grp.add_bar(name=grp_name, x=exp_cols, y=vals,
+                                    marker_color=CAT_COLORS[i % len(CAT_COLORS)])
+                dc(fig_grp, barmode="stack", height=380,
+                   yaxis_tickprefix="$", yaxis_tickformat=",.0f",
+                   legend=dict(orientation="h", y=-0.45))
+                st.plotly_chart(fig_grp, use_container_width=True)
+
+                # Pie + table side by side
+                col_pie, col_tbl = st.columns([1, 2])
+                with col_pie:
+                    last_col = exp_cols[-1] if exp_cols else None
+                    if last_col:
                         st.markdown(f"##### Mix Gastos -- {last_col}")
-                        fig_pie = go.Figure(go.Pie(
-                            labels=labels_p, values=vals_p,
-                            marker=dict(colors=CAT_COLORS),
-                            textfont=dict(color=TXT, size=10),
-                            insidetextfont=dict(color=TXT),
-                            hole=0.4
-                        ))
-                        dc(fig_pie, height=320, showlegend=False,
-                           margin=dict(t=10, b=10, l=10, r=10))
-                        st.plotly_chart(fig_pie, use_container_width=True)
+                        pv = [(gn, rd.get(last_col, 0)) for gn, rd in grp_data.items()]
+                        pv = [(gn, v) for gn, v in pv if v > 0]
+                        if pv:
+                            lp, vp = zip(*pv)
+                            fig_pie = go.Figure(go.Pie(
+                                labels=lp, values=vp,
+                                marker=dict(colors=CAT_COLORS),
+                                textfont=dict(color=TXT, size=10),
+                                insidetextfont=dict(color=TXT),
+                                hole=0.45
+                            ))
+                            dc(fig_pie, height=340, showlegend=False,
+                               margin=dict(t=10, b=10, l=10, r=10))
+                            st.plotly_chart(fig_pie, use_container_width=True)
+
+                with col_tbl:
+                    st.markdown("##### Tabla Agrupada de Gastos")
+                    tbl_grp = []
+                    for grp_name, row_vals in grp_data.items():
+                        entry = {"Grupo": grp_name}
+                        for c in exp_cols:
+                            entry[c] = fmt_usd(row_vals.get(c, 0))
+                        total_g = sum(row_vals.get(c, 0) for c in exp_cols)
+                        entry["TOTAL"] = fmt_usd(total_g)
+                        tbl_grp.append(entry)
+                    # Totals row
+                    totals_entry = {"Grupo": "TOTAL GASTOS"}
+                    for c in exp_cols:
+                        totals_entry[c] = fmt_usd(sum(
+                            grp_data[g].get(c, 0) for g in grp_data))
+                    totals_entry["TOTAL"] = fmt_usd(sum(
+                        sum(rd.values()) for rd in grp_data.values()))
+                    tbl_grp.append(totals_entry)
+
+                    tbl_grp_df = pd.DataFrame(tbl_grp).set_index("Grupo")
+                    st.markdown(html_table(tbl_grp_df, highlight_rows=["TOTAL GASTOS"]),
+                                unsafe_allow_html=True)
+
+        else:  # Detallada
+            # Show every individual expense row
+            det_rows = []
+            for row_name in all_exp_rows:
+                row = get_row(pl_data, row_name[:15])
+                if row is None: continue
+                vals_d = {c: abs(safe_val(row, c) or 0) for c in exp_cols}
+                total_d = sum(vals_d.values())
+                if total_d == 0: continue
+                det_rows.append((row_name, vals_d, total_d))
+
+            if det_rows:
+                # Stacked bar (top 10 by total)
+                top_det = sorted(det_rows, key=lambda x: x[2], reverse=True)[:10]
+                st.markdown("##### Top 10 Categorias de Gasto -- Mensual")
+                fig_det = go.Figure()
+                for i, (rn, rv, _) in enumerate(top_det):
+                    vals = [rv.get(c, 0) for c in exp_cols]
+                    fig_det.add_bar(name=rn[:30], x=exp_cols, y=vals,
+                                    marker_color=CAT_COLORS[i % len(CAT_COLORS)])
+                dc(fig_det, barmode="stack", height=380,
+                   yaxis_tickprefix="$", yaxis_tickformat=",.0f",
+                   legend=dict(orientation="h", y=-0.45))
+                st.plotly_chart(fig_det, use_container_width=True)
+
+                # Full detailed table
+                st.markdown("##### Tabla Detallada de Gastos")
+                tbl_det = []
+                for rn, rv, total_d in det_rows:
+                    entry = {"Categoria": rn}
+                    for c in exp_cols:
+                        entry[c] = fmt_usd(rv.get(c, 0))
+                    entry["TOTAL"] = fmt_usd(total_d)
+                    tbl_det.append(entry)
+                # Totals row
+                totals_det = {"Categoria": "TOTAL GASTOS"}
+                for c in exp_cols:
+                    totals_det[c] = fmt_usd(sum(rv.get(c, 0) for _, rv, _ in det_rows))
+                totals_det["TOTAL"] = fmt_usd(sum(t for _, _, t in det_rows))
+                tbl_det.append(totals_det)
+
+                tbl_det_df = pd.DataFrame(tbl_det).set_index("Categoria")
+                st.markdown(html_table(tbl_det_df, highlight_rows=["TOTAL GASTOS"]),
+                            unsafe_allow_html=True)
     else:
         st.info("Carga el modelo para ver los gastos.")
+
 
 # ==========================================================================
 # TAB 7: ASIGNACI=N -- central control, propagates to all other tabs
