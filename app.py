@@ -242,8 +242,6 @@ if not st.session_state.authenticated:
                 box-shadow:0 8px 40px rgba(0,0,0,0.5);">
       <div style="text-align:center;margin-bottom:1.8rem;">
         {_logo_img(w="200px")}
-        <div style="color:#4a6080;font-size:0.7rem;letter-spacing:0.18em;
-                    margin-top:0.8rem;">BREWING &amp; BLENDING</div>
         <div style="width:40px;height:2px;
                     background:linear-gradient(90deg,#2563eb,#10b981);
                     margin:0.8rem auto 0 auto;border-radius:2px;"></div>

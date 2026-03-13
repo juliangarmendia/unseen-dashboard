@@ -15,8 +15,19 @@ def get_service():
     else:
         # Streamlit Cloud: read from st.secrets
         import streamlit as st
-        sa_info = dict(st.secrets["gcp_service_account"])
-        creds = service_account.Credentials.from_service_account_info(sa_info, scopes=SCOPES)
+        sa_raw = dict(st.secrets["gcp_service_account"])
+        # Fix private_key: restore actual newlines if stored as \n literals
+        if "private_key" in sa_raw:
+            pk = sa_raw["private_key"]
+            if "\\n" in pk:
+                pk = pk.replace("\\n", "\n")
+            elif "\n" in pk and "-----" not in pk.split("\n")[0]:
+                pk = pk.replace("\n", "\n")
+            # Ensure proper PEM line breaks
+            pk = pk.replace("\n", "
+")
+            sa_raw["private_key"] = pk
+        creds = service_account.Credentials.from_service_account_info(sa_raw, scopes=SCOPES)
     return build('drive', 'v3', credentials=creds, cache_discovery=False)
  
 def list_files(svc, folder_id, mime=None):
