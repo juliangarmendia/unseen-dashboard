@@ -1522,7 +1522,7 @@ with tab_cf:
         <div style="color:#7888a0;font-size:0.75rem;font-weight:700;text-transform:uppercase;
                     letter-spacing:0.08em;margin-bottom:0.5rem;">CRÉDITO 1 -- Refinanciado Oct 2025</div>
         <div style="color:#ffffff;font-size:1.3rem;font-weight:700;">$46,200 originales</div>
-        <div style="color:#94a3b8;font-size:0.85rem;margin-top:0.3rem;">Factor 1.28x · Total a pagar: ~$59,136</div>
+        <div style="color:#94a3b8;font-size:0.85rem;margin-top:0.3rem;">Factor 1.28x - Total a pagar: ~$59,136</div>
         <div style="color:#f59e0b;font-size:0.85rem;font-weight:600;margin-top:0.5rem;">APR real: ~56%</div>
         </div>
         """, unsafe_allow_html=True)
@@ -1532,7 +1532,7 @@ with tab_cf:
         <div style="color:#7888a0;font-size:0.75rem;font-weight:700;text-transform:uppercase;
                     letter-spacing:0.08em;margin-bottom:0.5rem;">CRÉDITO 2 -- Activo</div>
         <div style="color:#ffffff;font-size:1.3rem;font-weight:700;">$20,697 neto</div>
-        <div style="color:#94a3b8;font-size:0.85rem;margin-top:0.3rem;">Factor 1.25x · Total: ~$25,871 · Holdback: 9.55%</div>
+        <div style="color:#94a3b8;font-size:0.85rem;margin-top:0.3rem;">Factor 1.25x - Total: ~$25,871 - Holdback: 9.55%</div>
         <div style="color:#ef4444;font-size:0.85rem;font-weight:600;margin-top:0.5rem;">APR real: ~{:.0f}%</div>
         </div>
         """.format(apr_from_factor(1.25, 6)), unsafe_allow_html=True)
@@ -1542,7 +1542,7 @@ with tab_cf:
         st.markdown("##### Cuota Mensual Toast Capital (Holdback sobre ventas brutas)")
         st.info("💡 El holdback es el pago automatico de la cuota del credito Toast. "
                 "Toast retiene un % de cada venta bruta diaria hasta saldar la deuda. "
-                "Tasa original: ~11% · Tasa renegociada: ~9.5%. "
+                "Tasa original: ~11% - Tasa renegociada: ~9.5%. "
                 "No es un impuesto ni un fee -- es amortización del préstamo.")
         pay_m = payout.groupby(["year","month"])["Withholdings"].sum().reset_index()
         pay_m["label"] = pay_m.apply(
@@ -1625,7 +1625,7 @@ with tab_exp:
 # TAB 7: ASIGNACI=N -- central control, propagates to all other tabs
 # ==========================================================================
 with tab_adj:
-    st.header("⚖️ Asignación de Gastos: Taproom vs Cervecería")
+    st.header("⚖️ Asignación de Gastos: Taproom vs Cerveceria")
     st.caption("Los cambios aqui se reflejan automáticamente en Overview, P&L, Breakeven, y todos los demas tabs.")
 
     st.info("💡 El % Taproom define cuanto del costo absorbe el taproom. "
@@ -1646,9 +1646,9 @@ with tab_adj:
             if val == 100:
                 st.caption("✅ 100% Taproom")
             elif val == 0:
-                st.caption("🏭 100% Cervecería")
+                st.caption("🏭 100% Cerveceria")
             else:
-                st.caption(f"Taproom {val}%  |  Cervecería {100-val}%")
+                st.caption(f"Taproom {val}%  |  Cerveceria {100-val}%")
 
     with col_right:
         for cat in cats[mid:]:
@@ -1661,9 +1661,9 @@ with tab_adj:
             if val == 100:
                 st.caption("✅ 100% Taproom")
             elif val == 0:
-                st.caption("🏭 100% Cervecería")
+                st.caption("🏭 100% Cerveceria")
             else:
-                st.caption(f"Taproom {val}%  |  Cervecería {100-val}%")
+                st.caption(f"Taproom {val}%  |  Cerveceria {100-val}%")
 
     st.divider()
 
@@ -1684,7 +1684,7 @@ with tab_adj:
                 "% Taproom": f"{pct}%",
                 "Costo Original/mes": fmt_usd(orig_avg),
                 "Costo Taproom/mes": fmt_usd(adj_avg),
-                "Costo Cervecería/mes": fmt_usd(orig_avg - adj_avg),
+                "Costo Cerveceria/mes": fmt_usd(orig_avg - adj_avg),
             })
         if impact_rows:
             imp_df = pd.DataFrame(impact_rows).set_index("Categoria")
@@ -1814,20 +1814,20 @@ with tab_rec:
                             f"Eres el CFO advisor de Unseen Creatures Brewing & Blending, "
                             f"un taproom en los Estados Unidos. Analiza estos datos financieros "
                             f"y dame recomendaciones claras y accionables en espanol.\n\n"
-                            f"DATOS MES MÁS RECIENTE ({recent_col}):\n"
+                            f"DATOS MES MAS RECIENTE ({recent_col}):\n"
                             f"- Ventas Netas: {fmt_usd(ventas_r)}\n"
                             f"- Margen Bruto: {fmt_usd(gm_r)}\n"
                             f"- Total COGS: {fmt_usd(cogs_r)}\n"
                             f"- EBITDA: {fmt_usd(ebitda_r)}\n"
                             f"- Resultado Neto: {fmt_usd(neto_r)}\n\n"
-                            f"ASIGNACIÓN DE COSTOS ACTUAL:\n{splits_summary}\n\n"
+                            f"ASIGNACION DE COSTOS ACTUAL:\n{splits_summary}\n\n"
                             f"COSTO TOTAL CERVEZA INGRESADO: {fmt_usd(beer_total)}\n\n"
                             f"Dame un informe con:\n"
-                            f"1. ESTADO ACTUAL -- diagnóstico de 3 lineas\n"
+                            f"1. ESTADO ACTUAL -- diagnostico de 3 lineas\n"
                             f"2. TOP 3 OPORTUNIDADES -- acciones concretas esta semana\n"
                             f"3. RIESGOS -- 2 riesgos principales a vigilar\n"
-                            f"4. UN NÚMERO A VIGILAR -- el KPI mas importante y por qué\n\n"
-                            f"Sé especifico con los numeros. Tono directo, sin relleno."
+                            f"4. UN NUMERO A VIGILAR -- el KPI mas importante y por que\n\n"
+                            f"Se especifico con los numeros. Tono directo, sin relleno."
                         }]
                     )
                     st.session_state.ai_report = msg.content[0].text
@@ -1847,8 +1847,8 @@ with tab_rec:
 st.divider()
 beer_active = sum(1 for v in st.session_state.beer_costs.values() if v > 0)
 st.caption(
-    f"Unseen Creatures Brewing & Blending · "
-    f"modelo_unseen_v4.xlsx · "
-    f"Costos cerveza activos: {beer_active} meses · "
+    f"Unseen Creatures Brewing & Blending - "
+    f"modelo_unseen_v4.xlsx - "
+    f"Costos cerveza activos: {beer_active} meses - "
     f"Splits personalizados: {sum(1 for k,v in st.session_state.cat_splits.items() if v != CAT_DEFAULTS.get(k,50))}"
 )
