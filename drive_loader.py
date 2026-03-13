@@ -1,15 +1,22 @@
-import os, io
+import os, io, json
 import pandas as pd
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
- 
+
 ROOT_FOLDER_ID = "1QYc7gQx5EkAwR-8WxlNLwED8SNrbvAbA"
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 CREDS = os.path.join(os.path.dirname(__file__), 'credentials.json')
- 
+
 def get_service():
-    creds = service_account.Credentials.from_service_account_file(CREDS, scopes=SCOPES)
+    if os.path.exists(CREDS):
+        # Local: use credentials.json file
+        creds = service_account.Credentials.from_service_account_file(CREDS, scopes=SCOPES)
+    else:
+        # Streamlit Cloud: read from st.secrets
+        import streamlit as st
+        sa_info = dict(st.secrets["gcp_service_account"])
+        creds = service_account.Credentials.from_service_account_info(sa_info, scopes=SCOPES)
     return build('drive', 'v3', credentials=creds, cache_discovery=False)
  
 def list_files(svc, folder_id, mime=None):

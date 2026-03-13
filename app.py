@@ -209,6 +209,35 @@ CAT_COLORS = [CLR["blue"],CLR["teal"],CLR["green"],CLR["orange"],
               CLR["purple"],CLR["red"],"#06b6d4","#84cc16",
               "#ec4899","#a78bfa","#fb923c","#34d399"]
 
+# ── AUTH ─────────────────────────────────────────────────────────────────
+_CREDENTIALS = {
+    "usernames": {
+        "UnseenCreatures": {
+            "name": "Unseen Creatures",
+            "password": "$2b$12$2h9AMWimJI/7JsVOiOCkB.J77HYMpRScD4en0FPhP7LLdIL6svECS"
+        }
+    }
+}
+_authenticator = stauth.Authenticate(
+    _CREDENTIALS,
+    "unseen_dashboard",   # cookie name
+    "unseen_key_2025",    # cookie key
+    cookie_expiry_days=7
+)
+_name, _auth_status, _username = _authenticator.login(
+    location="main",
+    fields={"Form name": "🍺 Unseen Creatures — Acceso",
+            "Username": "Usuario",
+            "Password": "Contraseña",
+            "Login": "Entrar"}
+)
+if _auth_status is False:
+    st.error("Usuario o contraseña incorrectos")
+    st.stop()
+elif _auth_status is None:
+    st.stop()
+# If we reach here, user is authenticated — show the full dashboard
+
 # ── PATHS (local) ────────────────────────────────────────────────────────
 BASE       = r"C:\brewery_analysis"
 SALES_2025 = os.path.join(BASE, "SalesSummary_2025-01-01_2025-12-31")
